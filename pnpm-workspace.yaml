@@ -1,0 +1,8 @@
+# Approved scripts for pnpm v11 native compilation
+allowBuilds:
+  msw: false
+  sharp: true
+
+# Your dependency overrides migrated from package.json
+overrides:
+  hono: "4.12.25"
