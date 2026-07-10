@@ -11,9 +11,9 @@ export default function ContactForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-w-md mx-auto p-4">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-4 max-w-md mx-auto p-4 bg-white rounded-lg shadow-sm">
       <div className="flex flex-col gap-1">
-        <label htmlFor="email" className="font-medium text-sm">
+        <label htmlFor="email" className="font-medium text-sm text-gray-700">
           Email Address
         </label>
         <input
@@ -21,38 +21,38 @@ export default function ContactForm() {
           type="email" 
           name="email"
           required
-          className="border p-2 rounded-md"
+          className="border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-black text-black"
         />
         <ValidationError 
           prefix="Email" 
           field="email"
           errors={state.errors}
-          className="text-red-500 text-xs"
+          className="text-red-500 text-xs mt-1"
         />
       </div>
 
       <div className="flex flex-col gap-1">
-        <label htmlFor="message" className="font-medium text-sm">
+        <label htmlFor="message" className="font-medium text-sm text-gray-700">
           Message
         </label>
         <textarea
           id="message"
           name="message"
           required
-          className="border p-2 rounded-md min-h-[100px]"
+          className="border p-2 rounded-md min-h-[100px] focus:outline-none focus:ring-2 focus:ring-black text-black"
         />
         <ValidationError 
           prefix="Message" 
           field="message"
           errors={state.errors}
-          className="text-red-500 text-xs"
+          className="text-red-500 text-xs mt-1"
         />
       </div>
 
       <button 
         type="submit" 
         disabled={state.submitting}
-        className="bg-black text-white p-2 rounded-md font-medium hover:opacity-90 disabled:opacity-50"
+        className="bg-black text-white p-2 rounded-md font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer mt-2"
       >
         {state.submitting ? "Submitting..." : "Submit"}
       </button>
