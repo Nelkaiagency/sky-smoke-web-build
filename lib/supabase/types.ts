@@ -140,6 +140,82 @@ export type Database = {
           },
         ]
       }
+      eliquid_variants: {
+        Row: {
+          bottle_size: string
+          eliquid_id: string
+          id: string
+          nicotine_strength: string
+          price: number
+          sku: string | null
+          stock_quantity: number
+        }
+        Insert: {
+          bottle_size: string
+          eliquid_id: string
+          id?: string
+          nicotine_strength: string
+          price: number
+          sku?: string | null
+          stock_quantity?: number
+        }
+        Update: {
+          bottle_size?: string
+          eliquid_id?: string
+          id?: string
+          nicotine_strength?: string
+          price?: number
+          sku?: string | null
+          stock_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'eliquid_variants_eliquid_id_fkey'
+            columns: ['eliquid_id']
+            isOneToOne: false
+            referencedRelation: 'eliquids'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      eliquids: {
+        Row: {
+          brand: string
+          created_at: string
+          description: string | null
+          flavor_name: string
+          id: string
+          image_url: string | null
+          shop_id: string
+        }
+        Insert: {
+          brand: string
+          created_at?: string
+          description?: string | null
+          flavor_name: string
+          id?: string
+          image_url?: string | null
+          shop_id: string
+        }
+        Update: {
+          brand?: string
+          created_at?: string
+          description?: string | null
+          flavor_name?: string
+          id?: string
+          image_url?: string | null
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'eliquids_shop_id_fkey'
+            columns: ['shop_id']
+            isOneToOne: false
+            referencedRelation: 'shops'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       orders: {
         Row: {
           age_verification_id: string

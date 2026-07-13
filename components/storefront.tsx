@@ -172,13 +172,14 @@ export function Storefront({
     setSubmitting(true)
     const supabase = createClient()
 
-    const { data: ageVerification, error: ageError } = await supabase
+    // generated client-side rather than read back via .select() — anon has no SELECT
+    // policy on age_verifications (would otherwise leak every guest's phone number)
+    const ageVerificationId = crypto.randomUUID()
+    const { error: ageError } = await supabase
       .from('age_verifications')
-      .insert({ shop_id: SHOP_ID, customer_phone: phone.trim(), verified: true, method: 'self_declared' })
-      .select('id')
-      .single()
+      .insert({ id: ageVerificationId, shop_id: SHOP_ID, customer_phone: phone.trim(), verified: true, method: 'self_declared' })
 
-    if (ageError || !ageVerification) {
+    if (ageError) {
       setError('Your order could not be sent right now. Please call the shop directly on 085 805 1510.')
       setSubmitting(false)
       return
@@ -199,7 +200,7 @@ export function Storefront({
       total_eur: Math.round(total * 100) / 100,
       subtotal_before_discount: Math.round(subtotal * 100) / 100,
       discount_applied_percent: discountPercent,
-      age_verification_id: ageVerification.id,
+      age_verification_id: ageVerificationId,
       customer_id: user?.id ?? null,
       source: 'website',
     })
@@ -257,6 +258,12 @@ export function Storefront({
                 <span className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-fuchsia-200">
                   Local Pickup
                 </span>
+                <Link
+                  href="/e-liquids"
+                  className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-cyan-200 transition hover:bg-cyan-400/20"
+                >
+                  Shop E-Liquids →
+                </Link>
               </div>
               <h1 className="font-display text-4xl font-semibold tracking-tight text-white sm:text-5xl">{shop.name}</h1>
               <p className="mt-3 text-lg text-zinc-300">
