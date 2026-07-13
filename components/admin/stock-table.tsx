@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Minus, Plus, PlusCircle } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Check, Minus, Plus, PlusCircle, Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { formatCurrency } from '@/lib/format'
 import { SHOP_ID } from '@/lib/shop'
@@ -19,29 +19,90 @@ type Product = {
 
 type Category = { id: string; name: string }
 
+type SortOption = 'name-asc' | 'name-desc' | 'stock-desc' | 'stock-asc'
+
+const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: 'name-asc', label: 'A to Z' },
+  { value: 'name-desc', label: 'Z to A' },
+  { value: 'stock-desc', label: 'Highest stock first' },
+  { value: 'stock-asc', label: 'Lowest stock first' },
+]
+
 export function StockTable({ products, categories }: { products: Product[]; categories: Category[] }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [sortBy, setSortBy] = useState<SortOption>('name-asc')
+  const [highlightId, setHighlightId] = useState<string | null>(searchParams.get('highlight'))
 
-  const adjustStock = async (productId: string, changeQty: number, reason: string) => {
+  const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map())
+
+  const adjustStock = async (productId: string, changeQty: number, reason: string, source = 'admin_manual') => {
     setBusyId(productId)
     const supabase = createClient()
-    await supabase.from('stock_movements').insert({
+    const { error } = await supabase.from('stock_movements').insert({
       product_id: productId,
       shop_id: SHOP_ID,
       change_qty: changeQty,
       reason,
-      source: 'admin_manual',
+      source,
     })
     setBusyId(null)
     router.refresh()
+    return !error
   }
+
+  const filteredProducts = useMemo(() => {
+    let list = products
+    if (categoryFilter !== 'all') {
+      list = list.filter((p) => p.category_id === categoryFilter)
+    }
+    const query = search.trim().toLowerCase()
+    if (query) {
+      list = list.filter((p) => p.name.toLowerCase().includes(query))
+    }
+    return [...list].sort((a, b) => {
+      switch (sortBy) {
+        case 'name-desc':
+          return b.name.localeCompare(a.name)
+        case 'stock-desc':
+          return b.stock_qty - a.stock_qty
+        case 'stock-asc':
+          return a.stock_qty - b.stock_qty
+        default:
+          return a.name.localeCompare(b.name)
+      }
+    })
+  }, [products, categoryFilter, search, sortBy])
+
+  useEffect(() => {
+    if (!highlightId) return
+    const el = rowRefs.current.get(highlightId)
+    if (el) {
+      const rect = el.getBoundingClientRect()
+      const fullyVisible = rect.top >= 0 && rect.bottom <= window.innerHeight
+      if (!fullyVisible) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+    const timeout = setTimeout(() => setHighlightId(null), 3000)
+    const clearOnInteract = () => setHighlightId(null)
+    window.addEventListener('pointerdown', clearOnInteract)
+    return () => {
+      clearTimeout(timeout)
+      window.removeEventListener('pointerdown', clearOnInteract)
+    }
+  }, [highlightId])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-zinc-400">{products.length} product{products.length === 1 ? '' : 's'}</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-zinc-400">
+          {filteredProducts.length} of {products.length} product{products.length === 1 ? '' : 's'}
+        </p>
         <button
           type="button"
           onClick={() => setShowAddForm((v) => !v)}
@@ -63,17 +124,77 @@ export function StockTable({ products, categories }: { products: Product[]; cate
       ) : null}
 
       <div className="space-y-3">
-        {products.map((product) => (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-zinc-500" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search products…"
+            className="w-full rounded-full border border-white/10 bg-black/40 py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-zinc-500 focus:border-cyan-400/40 focus:outline-none"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter('all')}
+              className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                categoryFilter === 'all'
+                  ? 'border-cyan-400/40 bg-cyan-400/15 text-cyan-100'
+                  : 'border-white/10 bg-white/5 text-zinc-400 hover:border-cyan-400/20 hover:text-zinc-200'
+              }`}
+            >
+              All
+            </button>
+            {categories.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCategoryFilter(c.id)}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition ${
+                  categoryFilter === c.id
+                    ? 'border-cyan-400/40 bg-cyan-400/15 text-cyan-100'
+                    : 'border-white/10 bg-white/5 text-zinc-400 hover:border-cyan-400/20 hover:text-zinc-200'
+                }`}
+              >
+                {c.name}
+              </button>
+            ))}
+          </div>
+
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as SortOption)}
+            className="rounded-full border border-white/10 bg-black/40 px-3.5 py-2 text-sm text-white focus:border-cyan-400/40 focus:outline-none"
+          >
+            {SORT_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {filteredProducts.map((product) => (
           <StockRow
             key={product.id}
             product={product}
             busy={busyId === product.id}
-            onAdjust={(delta, reason) => adjustStock(product.id, delta, reason)}
+            highlighted={highlightId === product.id}
+            registerRef={(el) => {
+              if (el) rowRefs.current.set(product.id, el)
+              else rowRefs.current.delete(product.id)
+            }}
+            onAdjust={(delta, reason, source) => adjustStock(product.id, delta, reason, source)}
           />
         ))}
-        {products.length === 0 ? (
+        {filteredProducts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-400">
-            No products yet. Add your first one above.
+            {products.length === 0 ? 'No products yet. Add your first one above.' : 'No products match your search or filter.'}
           </p>
         ) : null}
       </div>
@@ -84,18 +205,102 @@ export function StockTable({ products, categories }: { products: Product[]; cate
 function StockRow({
   product,
   busy,
+  highlighted,
+  registerRef,
   onAdjust,
 }: {
   product: Product
   busy: boolean
-  onAdjust: (delta: number, reason: string) => void
+  highlighted: boolean
+  registerRef: (el: HTMLDivElement | null) => void
+  onAdjust: (delta: number, reason: string, source?: string) => Promise<boolean>
 }) {
   const [manualQty, setManualQty] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [editValue, setEditValue] = useState('')
+  const [editError, setEditError] = useState('')
+  const [showSuccess, setShowSuccess] = useState(false)
+
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   const isLow = product.stock_qty < 5
 
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [editing])
+
+  useEffect(() => {
+    if (!editing) return
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        cancelEdit()
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing])
+
+  const startEdit = () => {
+    if (busy) return
+    setEditing(true)
+    setEditValue(String(product.stock_qty))
+    setEditError('')
+  }
+
+  const cancelEdit = () => {
+    setEditing(false)
+    setEditError('')
+  }
+
+  const confirmEdit = async () => {
+    if (editValue.trim() === '') {
+      setEditError('Enter a non-negative whole number.')
+      return
+    }
+    const val = Number(editValue)
+    if (!Number.isInteger(val) || val < 0) {
+      setEditError('Enter a non-negative whole number.')
+      return
+    }
+    const diff = val - product.stock_qty
+    if (diff === 0) {
+      setEditing(false)
+      return
+    }
+    setEditError('')
+    const ok = await onAdjust(diff, 'manual_correction', 'admin_direct_edit')
+    if (ok) {
+      setEditing(false)
+      setShowSuccess(true)
+      setTimeout(() => setShowSuccess(false), 1200)
+    } else {
+      setEditError('Could not update stock. Try again.')
+    }
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      confirmEdit()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEdit()
+    }
+  }
+
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+    <div
+      ref={(el) => {
+        containerRef.current = el
+        registerRef(el)
+      }}
+      className={`rounded-2xl border border-white/10 bg-white/5 p-4 transition-colors ${highlighted ? 'animate-highlight-pulse' : ''}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate font-medium text-white">{product.name}</p>
@@ -114,16 +319,54 @@ function StockRow({
         <div className="flex items-center gap-1 rounded-full border border-white/10 bg-black/30 p-1">
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || editing}
             onClick={() => onAdjust(-1, 'manual -1')}
             className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-50"
           >
             <Minus className="size-4" />
           </button>
-          <span className="min-w-8 text-center text-sm font-semibold text-white">{product.stock_qty}</span>
+
+          {editing ? (
+            <span className="flex items-center gap-1">
+              <input
+                ref={inputRef}
+                type="number"
+                min={0}
+                step={1}
+                value={editValue}
+                disabled={busy}
+                onChange={(e) => setEditValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="w-14 rounded-md border border-cyan-400/40 bg-black/60 px-1.5 py-1 text-center text-sm font-semibold text-white focus:outline-none focus:ring-1 focus:ring-cyan-400/50"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={confirmEdit}
+                title="Confirm exact count"
+                className="rounded-full p-1.5 text-emerald-300 transition hover:bg-emerald-400/10 hover:text-emerald-200 disabled:opacity-50"
+              >
+                <Check className="size-4" />
+              </button>
+            </span>
+          ) : (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={startEdit}
+              title="Click to set exact stock count"
+              className={`flex min-w-8 items-center justify-center gap-1 rounded px-1 text-center text-sm font-semibold transition hover:bg-white/10 disabled:opacity-50 ${
+                showSuccess ? 'text-emerald-300' : 'text-white'
+              }`}
+            >
+              {product.stock_qty}
+              {showSuccess ? <Check className="size-3 text-emerald-300" /> : null}
+            </button>
+          )}
+
           <button
             type="button"
-            disabled={busy}
+            disabled={busy || editing}
             onClick={() => onAdjust(1, 'manual +1')}
             className="rounded-full p-2 text-zinc-300 transition hover:text-white disabled:opacity-50"
           >
@@ -157,6 +400,8 @@ function StockRow({
           </button>
         </form>
       </div>
+
+      {editError ? <p className="mt-2 text-xs text-rose-300">{editError}</p> : null}
     </div>
   )
 }

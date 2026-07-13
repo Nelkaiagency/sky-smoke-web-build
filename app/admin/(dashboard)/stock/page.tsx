@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { SHOP_ID } from '@/lib/shop'
 import { StockTable } from '@/components/admin/stock-table'
@@ -20,7 +21,9 @@ export default async function AdminStockPage() {
         <p className="text-sm font-semibold uppercase tracking-[0.28em] text-zinc-400">Inventory</p>
         <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Stock</h1>
       </div>
-      <StockTable products={products.data ?? []} categories={categories.data ?? []} />
+      <Suspense>
+        <StockTable products={products.data ?? []} categories={categories.data ?? []} />
+      </Suspense>
     </div>
   )
 }

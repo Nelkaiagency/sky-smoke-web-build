@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { LayoutDashboard, LogOut, Package, Percent, ShoppingCart } from 'lucide-react'
+import { BarChart3, LayoutDashboard, LogOut, Package, Percent, ShoppingCart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 const TABS = [
@@ -10,6 +10,7 @@ const TABS = [
   { href: '/admin/stock', label: 'Stock', icon: Package },
   { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
   { href: '/admin/discounts', label: 'Discounts', icon: Percent },
+  { href: '/admin/analytics', label: 'Analytics', icon: BarChart3 },
 ]
 
 export function AdminNav({ shopName }: { shopName: string }) {

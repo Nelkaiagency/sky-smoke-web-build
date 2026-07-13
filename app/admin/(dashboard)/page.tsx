@@ -73,12 +73,16 @@ export default async function AdminDashboardPage() {
           <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-200">Low stock alerts</p>
           <div className="mt-3 space-y-2">
             {lowStock.data.map((p) => (
-              <div key={p.id} className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+              <Link
+                key={p.id}
+                href={`/admin/stock?highlight=${p.id}`}
+                className="flex items-center justify-between rounded-xl border border-white/10 bg-black/30 px-3 py-2 transition hover:border-amber-400/30"
+              >
                 <span className="text-sm text-white">{p.name}</span>
                 <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs font-medium text-amber-200">
                   {p.stock_qty} left
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
