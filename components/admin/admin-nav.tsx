@@ -1,9 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart3, LayoutDashboard, LogOut, Package, Percent, ShoppingCart } from 'lucide-react'
+import { BarChart3, LayoutDashboard, LogOut, Package, Percent, ShoppingCart, Volume2, VolumeX } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { isSoundMuted, setSoundMuted } from '@/lib/admin-sound'
 
 const TABS = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
@@ -16,6 +18,17 @@ const TABS = [
 export function AdminNav({ shopName }: { shopName: string }) {
   const pathname = usePathname()
   const router = useRouter()
+  const [muted, setMuted] = useState(false)
+
+  useEffect(() => {
+    setMuted(isSoundMuted())
+  }, [])
+
+  const toggleMuted = () => {
+    const next = !muted
+    setMuted(next)
+    setSoundMuted(next)
+  }
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -31,14 +44,24 @@ export function AdminNav({ shopName }: { shopName: string }) {
           <p className="truncate text-sm font-semibold text-white">{shopName}</p>
           <p className="text-[11px] uppercase tracking-[0.2em] text-zinc-500">Admin</p>
         </div>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-rose-400/30 hover:text-rose-200"
-        >
-          <LogOut className="size-3.5" />
-          Sign out
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleMuted}
+            title={muted ? 'Unmute new-order sound' : 'Mute new-order sound'}
+            className="flex items-center justify-center rounded-full border border-white/10 bg-white/5 p-2 text-zinc-300 transition hover:border-cyan-400/20 hover:text-cyan-200"
+          >
+            {muted ? <VolumeX className="size-3.5" /> : <Volume2 className="size-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={handleSignOut}
+            className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-rose-400/30 hover:text-rose-200"
+          >
+            <LogOut className="size-3.5" />
+            Sign out
+          </button>
+        </div>
       </div>
       <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 pb-3">
         {TABS.map((tab) => {

@@ -25,6 +25,9 @@ import { SHOP_ID } from '@/lib/shop'
 import { formatCurrency } from '@/lib/format'
 import { bestDiscountPercent, type DiscountTier } from '@/lib/discount'
 import { stockLabel } from '@/lib/stock-label'
+import { Toast, useToast } from '@/components/toast'
+
+const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mkoldpve'
 
 type Product = {
   id: string
@@ -85,6 +88,7 @@ export function Storefront({
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [now, setNow] = useState(new Date())
+  const { message: toastMessage, show: showToast, dismiss: dismissToast } = useToast()
 
   useEffect(() => {
     const interval = window.setInterval(() => setNow(new Date()), 60000)
@@ -207,6 +211,22 @@ export function Storefront({
       return
     }
 
+    // Supabase is the source of truth for the order; this is a non-blocking copy for email notification/backup.
+    fetch(FORMSPREE_ENDPOINT, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: name.trim(),
+        phone: phone.trim(),
+        age_verified: ageVerified,
+        items: orderItems.map((item) => ({ name: item.name, quantity: item.quantity, price: item.price_eur, total: item.price_eur * item.quantity })),
+        subtotal,
+        discount_percent: discountPercent,
+        total_order_cost: total,
+        _subject: `Sky Smoke 1 Pre-Order from ${name.trim()}`,
+      }),
+    }).catch(() => {})
+
     setReceipt({
       reference: `SKY-${Date.now().toString().slice(-6)}`,
       name: name.trim(),
@@ -215,6 +235,7 @@ export function Storefront({
       discountPercent,
       total,
     })
+    showToast('Pre-order received!')
     setCart({})
     if (!user) {
       setName('')
@@ -562,11 +583,17 @@ export function Storefront({
 
                 <button
                   type="submit"
-                  disabled={submitting}
-                  className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={submitting || cartCount === 0}
+                  className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition ${
+                    cartCount === 0
+                      ? 'cursor-not-allowed bg-white/5 text-zinc-500'
+                      : submitting
+                        ? 'cursor-not-allowed bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-slate-950 opacity-60'
+                        : 'bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-slate-950 hover:brightness-110'
+                  }`}
                 >
-                  {submitting ? 'Sending…' : 'Submit Pre-Order for Collection'}
-                  <ArrowRight className="size-4" />
+                  {cartCount === 0 ? 'Add items to pre-order' : submitting ? 'Submitting…' : 'Submit Pre-Order for Collection'}
+                  {cartCount > 0 ? <ArrowRight className="size-4" /> : null}
                 </button>
               </form>
             </div>
@@ -734,12 +761,6 @@ export function Storefront({
             </div>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Link
-              href="/admin/login"
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-cyan-400/20 hover:text-white"
-            >
-              Shop Admin
-            </Link>
             <button type="button" onClick={() => setLegalModal('privacy')} className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-200 transition hover:border-cyan-400/20 hover:text-white">
               Privacy Policy
             </button>
@@ -749,6 +770,8 @@ export function Storefront({
           </div>
         </div>
       </footer>
+
+      <Toast message={toastMessage} onDismiss={dismissToast} />
     </main>
   )
 }

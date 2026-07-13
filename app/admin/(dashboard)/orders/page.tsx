@@ -3,6 +3,7 @@ import { Download } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { SHOP_ID } from '@/lib/shop'
 import { formatCurrency, formatDateTime } from '@/lib/format'
+import { OrderSoundListener } from '@/components/admin/order-sound-listener'
 
 const STATUSES = ['all', 'pending', 'confirmed', 'collected', 'cancelled'] as const
 
@@ -31,6 +32,7 @@ export default async function AdminOrdersPage({
 
   return (
     <div className="space-y-6">
+      <OrderSoundListener />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-sm font-semibold uppercase tracking-[0.28em] text-zinc-400">Orders</p>
