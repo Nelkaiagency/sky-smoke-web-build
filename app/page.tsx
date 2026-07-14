@@ -9,7 +9,7 @@ export default async function Page() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const [productsRes, categoriesRes, discountTiersRes, shopRes, profileRes] = await Promise.all([
+  const [productsRes, categoriesRes, discountTiersRes, shopRes, profileRes, eliquidsRes] = await Promise.all([
     supabase
       .from('products')
       .select('id, name, description, price_eur, stock_qty, category_id, age_restricted')
@@ -22,6 +22,11 @@ export default async function Page() {
     user
       ? supabase.from('customer_profiles').select('full_name, phone').eq('id', user.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    supabase
+      .from('eliquids')
+      .select('id, flavor_name, brand, description, image_url, eliquid_variants(id, bottle_size, nicotine_strength, price, stock_quantity, sku)')
+      .eq('shop_id', SHOP_ID)
+      .order('flavor_name', { ascending: true }),
   ])
 
   return (
@@ -32,6 +37,7 @@ export default async function Page() {
       shop={shopRes.data ?? { name: 'Sky Smoke 1', address: '47 Maylor St, Centre, Cork, T12 AH70', phone: '085 805 1510' }}
       user={user ? { id: user.id, email: user.email ?? '' } : null}
       customerProfile={profileRes.data ?? null}
+      eliquids={eliquidsRes.data ?? []}
     />
   )
 }

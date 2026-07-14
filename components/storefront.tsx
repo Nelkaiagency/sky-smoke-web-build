@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   CalendarClock,
   CircleX,
+  Droplet,
   LogOut,
   MapPin,
   Minus,
@@ -26,6 +27,7 @@ import { formatCurrency } from '@/lib/format'
 import { bestDiscountPercent, type DiscountTier } from '@/lib/discount'
 import { stockLabel } from '@/lib/stock-label'
 import { Toast, useToast } from '@/components/toast'
+import { EliquidDetailModal, startingPrice, type Eliquid, type Variant } from '@/components/eliquid-detail-modal'
 
 const FORMSPREE_ENDPOINT = 'https://formspree.io/f/mkoldpve'
 
@@ -52,6 +54,8 @@ type Receipt = {
   total: number
 }
 
+type EliquidCartLine = { variantId: string; qty: number; variant: Variant; eliquidName: string }
+
 const ACCENTS = [
   'from-cyan-400 via-sky-500 to-fuchsia-500',
   'from-fuchsia-500 via-purple-500 to-indigo-500',
@@ -69,6 +73,7 @@ export function Storefront({
   shop,
   user,
   customerProfile,
+  eliquids,
 }: {
   products: Product[]
   categories: Category[]
@@ -76,13 +81,16 @@ export function Storefront({
   shop: { name: string; address: string | null; phone: string | null }
   user: { id: string; email: string } | null
   customerProfile: { full_name: string | null; phone: string | null } | null
+  eliquids: Eliquid[]
 }) {
   const [cart, setCart] = useState<Record<string, number>>({})
+  const [eliquidCart, setEliquidCart] = useState<Record<string, number>>({})
   const [name, setName] = useState(customerProfile?.full_name ?? '')
   const [phone, setPhone] = useState(customerProfile?.phone ?? '')
   const [ageVerified, setAgeVerified] = useState(false)
   const [selectedCategory, setSelectedCategory] = useState<string>(categories[0]?.id ?? '')
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
+  const [selectedEliquid, setSelectedEliquid] = useState<Eliquid | null>(null)
   const [legalModal, setLegalModal] = useState<'privacy' | 'terms' | null>(null)
   const [receipt, setReceipt] = useState<Receipt | null>(null)
   const [error, setError] = useState('')
@@ -104,7 +112,30 @@ export function Storefront({
     return products.filter((product) => cart[product.id]).map((product) => ({ ...product, quantity: cart[product.id] }))
   }, [cart, products])
 
-  const subtotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price_eur * item.quantity, 0), [cartItems])
+  const variantIndex = useMemo(() => {
+    const map = new Map<string, { variant: Variant; eliquidName: string }>()
+    for (const e of eliquids) {
+      for (const v of e.eliquid_variants) {
+        map.set(v.id, { variant: v, eliquidName: e.flavor_name })
+      }
+    }
+    return map
+  }, [eliquids])
+
+  const eliquidCartLines: EliquidCartLine[] = useMemo(() => {
+    return Object.entries(eliquidCart)
+      .filter(([, qty]) => qty > 0)
+      .map(([variantId, qty]) => {
+        const info = variantIndex.get(variantId)!
+        return { variantId, qty, variant: info.variant, eliquidName: info.eliquidName }
+      })
+  }, [eliquidCart, variantIndex])
+
+  const eliquidCartCount = eliquidCartLines.reduce((sum, l) => sum + l.qty, 0)
+  const eliquidSubtotal = eliquidCartLines.reduce((sum, l) => sum + l.variant.price * l.qty, 0)
+
+  const productSubtotal = useMemo(() => cartItems.reduce((sum, item) => sum + item.price_eur * item.quantity, 0), [cartItems])
+  const subtotal = productSubtotal + eliquidSubtotal
   const discountPercent = useMemo(() => bestDiscountPercent(discountTiers, subtotal), [discountTiers, subtotal])
   const total = useMemo(() => subtotal * (1 - discountPercent / 100), [subtotal, discountPercent])
 
@@ -116,7 +147,35 @@ export function Storefront({
   }, [discountTiers, subtotal])
 
   const cartCount = useMemo(() => Object.values(cart).reduce((sum, count) => sum + count, 0), [cart])
+  const combinedCartCount = cartCount + eliquidCartCount
   const visibleProducts = useMemo(() => products.filter((p) => p.category_id === selectedCategory), [products, selectedCategory])
+
+  const setEliquidLineQty = (variantId: string, qty: number, maxStock: number) => {
+    setEliquidCart((current) => {
+      const next = { ...current }
+      const clamped = Math.max(0, Math.min(qty, maxStock))
+      if (clamped === 0) delete next[variantId]
+      else next[variantId] = clamped
+      return next
+    })
+  }
+
+  const addEliquidToCart = (variantId: string, qty: number, maxStock: number) => {
+    setEliquidCart((current) => {
+      const next = { ...current }
+      const existing = next[variantId] ?? 0
+      next[variantId] = Math.min(existing + qty, maxStock)
+      return next
+    })
+  }
+
+  const removeEliquidFromCart = (variantId: string) => {
+    setEliquidCart((current) => {
+      const next = { ...current }
+      delete next[variantId]
+      return next
+    })
+  }
 
   const addToCart = (product: Product) => {
     if (product.stock_qty <= (cart[product.id] ?? 0)) return
@@ -163,7 +222,7 @@ export function Storefront({
       setError('You must confirm you are over 18 to collect from the shop.')
       return
     }
-    if (cartCount === 0) {
+    if (combinedCartCount === 0) {
       setError('Add at least one item before submitting your pre-order.')
       return
     }
@@ -185,12 +244,20 @@ export function Storefront({
       return
     }
 
-    const orderItems = cartItems.map((item) => ({
-      product_id: item.id,
-      name: item.name,
-      price_eur: item.price_eur,
-      quantity: item.quantity,
-    }))
+    const orderItems = [
+      ...cartItems.map((item) => ({
+        product_id: item.id,
+        name: item.name,
+        price_eur: item.price_eur,
+        quantity: item.quantity,
+      })),
+      ...eliquidCartLines.map((line) => ({
+        product_id: line.variantId,
+        name: `${line.eliquidName} — ${line.variant.bottle_size}, ${line.variant.nicotine_strength}`,
+        price_eur: line.variant.price,
+        quantity: line.qty,
+      })),
+    ]
 
     const { error: orderError } = await supabase.from('orders').insert({
       shop_id: SHOP_ID,
@@ -238,6 +305,7 @@ export function Storefront({
     })
     showToast('Pre-order received!')
     setCart({})
+    setEliquidCart({})
     if (!user) {
       setName('')
       setPhone('')
@@ -258,12 +326,6 @@ export function Storefront({
                 <span className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-fuchsia-200">
                   Local Pickup
                 </span>
-                <Link
-                  href="/e-liquids"
-                  className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.3em] text-cyan-200 transition hover:bg-cyan-400/20"
-                >
-                  Shop E-Liquids →
-                </Link>
               </div>
               <h1 className="font-display text-4xl font-semibold tracking-tight text-white sm:text-5xl">{shop.name}</h1>
               <p className="mt-3 text-lg text-zinc-300">
@@ -455,6 +517,61 @@ export function Storefront({
                 </div>
               </div>
             </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-[#070b14]/90 p-5 shadow-[0_16px_60px_rgba(0,0,0,0.25)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold uppercase tracking-[0.28em] text-zinc-400">Click & Collect Pre-Order</p>
+                  <h2 className="mt-2 text-2xl font-semibold text-white">E-Liquids in stock</h2>
+                </div>
+                <div className="rounded-full border border-fuchsia-500/25 bg-fuchsia-500/10 px-3 py-1.5 text-sm text-fuchsia-200">
+                  {eliquidCartCount} item{eliquidCartCount === 1 ? '' : 's'} in pre-order
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-3 md:grid-cols-2">
+                {eliquids.map((eliquid) => (
+                  <article
+                    key={eliquid.id}
+                    className="cursor-pointer rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-cyan-400/30 hover:bg-white/8"
+                    onClick={() => setSelectedEliquid(eliquid)}
+                  >
+                    <div className="rounded-xl bg-gradient-to-br from-cyan-400 via-sky-500 to-fuchsia-500 p-[1px]">
+                      <div className="rounded-[11px] bg-[#060811] p-3">
+                        <div className="mb-3 flex items-center justify-between">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-zinc-400">
+                            {eliquid.brand}
+                          </span>
+                          <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-[10px] font-medium text-cyan-200">
+                            {eliquid.eliquid_variants.length} option{eliquid.eliquid_variants.length === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                        <div className="mb-3 flex h-24 items-center justify-center rounded-xl border border-white/10 bg-black/40">
+                          <Droplet className="size-10 text-cyan-300/70" />
+                        </div>
+                        <h4 className="text-lg font-semibold text-white">{eliquid.flavor_name}</h4>
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-zinc-400">{eliquid.description}</p>
+                        <div className="mt-4 flex items-center justify-between">
+                          <div>
+                            <p className="text-xl font-semibold text-white">From {formatCurrency(startingPrice(eliquid))}</p>
+                            <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Choose size &amp; strength</p>
+                          </div>
+                          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-2 text-sm font-medium text-cyan-200">
+                            <ShoppingBag className="size-4" />
+                            Select
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                ))}
+                {eliquids.length === 0 ? (
+                  <p className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-zinc-400 md:col-span-2">
+                    No e-liquids available right now — check back soon.
+                  </p>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           <aside className="space-y-6">
@@ -469,11 +586,11 @@ export function Storefront({
                 </div>
               </div>
 
-              {cartItems.length > 0 ? (
+              {combinedCartCount > 0 ? (
                 <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold uppercase tracking-[0.25em] text-zinc-400">Your order</p>
-                    <p className="text-sm text-zinc-300">{cartCount} item{cartCount === 1 ? '' : 's'}</p>
+                    <p className="text-sm text-zinc-300">{combinedCartCount} item{combinedCartCount === 1 ? '' : 's'}</p>
                   </div>
                   <div className="mt-4 space-y-3">
                     {cartItems.map((item) => (
@@ -505,6 +622,44 @@ export function Storefront({
                             <Trash2 className="size-3.5" />
                           </button>
                           <p className="text-sm font-semibold text-cyan-200">{formatCurrency(item.price_eur * item.quantity)}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {eliquidCartLines.map((line) => (
+                      <div key={line.variantId} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-black/30 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-white">{line.eliquidName}</p>
+                          <p className="text-xs text-zinc-500">
+                            {line.variant.bottle_size}, {line.variant.nicotine_strength} · x{line.qty}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1">
+                            <button
+                              type="button"
+                              onClick={() => setEliquidLineQty(line.variantId, line.qty - 1, line.variant.stock_quantity)}
+                              className="rounded-full p-1 text-zinc-300"
+                            >
+                              <Minus className="size-3.5" />
+                            </button>
+                            <span className="min-w-5 text-center text-xs font-semibold text-white">{line.qty}</span>
+                            <button
+                              type="button"
+                              disabled={line.qty >= line.variant.stock_quantity}
+                              onClick={() => setEliquidLineQty(line.variantId, line.qty + 1, line.variant.stock_quantity)}
+                              className="rounded-full p-1 text-zinc-300 disabled:opacity-40"
+                            >
+                              <Plus className="size-3.5" />
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEliquidFromCart(line.variantId)}
+                            className="rounded-full border border-white/10 p-1.5 text-zinc-400 transition hover:text-rose-300"
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                          <p className="text-sm font-semibold text-cyan-200">{formatCurrency(line.variant.price * line.qty)}</p>
                         </div>
                       </div>
                     ))}
@@ -590,17 +745,17 @@ export function Storefront({
 
                 <button
                   type="submit"
-                  disabled={submitting || cartCount === 0}
+                  disabled={submitting || combinedCartCount === 0}
                   className={`flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold transition ${
-                    cartCount === 0
+                    combinedCartCount === 0
                       ? 'cursor-not-allowed bg-white/5 text-zinc-500'
                       : submitting
                         ? 'cursor-not-allowed bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-slate-950 opacity-60'
                         : 'bg-gradient-to-r from-cyan-400 to-fuchsia-500 text-slate-950 hover:brightness-110'
                   }`}
                 >
-                  {cartCount === 0 ? 'Add items to pre-order' : submitting ? 'Submitting…' : 'Submit Pre-Order for Collection'}
-                  {cartCount > 0 ? <ArrowRight className="size-4" /> : null}
+                  {combinedCartCount === 0 ? 'Add items to pre-order' : submitting ? 'Submitting…' : 'Submit Pre-Order for Collection'}
+                  {combinedCartCount > 0 ? <ArrowRight className="size-4" /> : null}
                 </button>
               </form>
             </div>
@@ -714,6 +869,17 @@ export function Storefront({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {selectedEliquid ? (
+        <EliquidDetailModal
+          eliquid={selectedEliquid}
+          onClose={() => setSelectedEliquid(null)}
+          onAdd={(variantId, qty, maxStock) => {
+            addEliquidToCart(variantId, qty, maxStock)
+            setSelectedEliquid(null)
+          }}
+        />
       ) : null}
 
       {legalModal ? (
